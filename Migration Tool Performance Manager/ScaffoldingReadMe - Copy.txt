@@ -1,0 +1,1 @@
+﻿Scaffold-DbContext name="frameConn" Microsoft.EntityFrameworkCore.SqlServer -context FrameDbContext -ContextDir Data  -outputdir Models -DataAnnotations -force 
