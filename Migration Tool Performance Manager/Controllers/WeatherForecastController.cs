@@ -7,7 +7,6 @@ using Migration_Tool_Performance_Manager.Models2;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.Serialization;
 using System.Threading.Tasks;
 
 namespace Migration_Tool_Performance_Manager.Controllers
@@ -27,16 +26,38 @@ namespace Migration_Tool_Performance_Manager.Controllers
         [HttpGet("migrate")]
         public async Task<IActionResult> Migrate()
         {
+
+
+
+
             var scorecards = await _mysql_context.BscScorecards.AsNoTracking()
                 .AsSplitQuery()
                 .ToListAsync();
 
-            
+
+            var oldPerspectives = await _mysql_context.BscPerspectives.AsNoTracking()
+                .AsSplitQuery()
+                .OrderBy(d => d.Id)
+                .ToListAsync();
+
+
             var oldBusinessUnits = await _mysql_context.BscBusinessUnits.AsNoTracking()
                 .AsSplitQuery()
                 .ToListAsync();
-            
+
             var oldDepartments = await _mysql_context.BscDepartments.AsNoTracking()
+                .AsSplitQuery()
+                .ToListAsync();
+
+            var oldGoals = await _mysql_context.BscGoals.AsNoTracking()
+                .AsSplitQuery()
+                .ToListAsync();
+
+            var oldTargets = await _mysql_context.BscTargets.AsNoTracking()
+                .AsSplitQuery()
+                .ToListAsync();
+
+            var oldActuals = await _mysql_context.BscMonthlies.AsNoTracking()
                 .AsSplitQuery()
                 .ToListAsync();
 
@@ -47,7 +68,7 @@ namespace Migration_Tool_Performance_Manager.Controllers
                 .ToListAsync();
 
 
-              
+
 
             //create connection
 
@@ -74,7 +95,7 @@ namespace Migration_Tool_Performance_Manager.Controllers
             List<Perspective> perspectives = new List<Perspective>();
 
             int counter = 1;
-            foreach (var defaultPerspective in defaultPerspectives)
+            foreach (var defaultPerspective in oldPerspectives)
             {
                 Perspective perspective = new Perspective()
                 {
@@ -82,6 +103,7 @@ namespace Migration_Tool_Performance_Manager.Controllers
                     CompanyId = company.Id,
                     Priority = counter++,
                     Type = "bsc",
+                    OldId = defaultPerspective.Id,
                     PerspectiveAllocations = new List<PerspectiveAllocation>()
                     {
                         new PerspectiveAllocation()
@@ -135,7 +157,7 @@ namespace Migration_Tool_Performance_Manager.Controllers
                     CompanyId = company.Id,
                     PasswordHash = hasher.HashPassword(item.Email, item.Password),
                     OldId = item.Id.ToString(),
-                    ManagerOldId =   item.Supervisor,
+                    ManagerOldId = item.Supervisor,
                     /*  EmployeeDetailEmployee = new EmployeeDetail()
                       {
                           Position = item.Position,
@@ -151,8 +173,8 @@ namespace Migration_Tool_Performance_Manager.Controllers
 
             _context.AddRange(users1);
 
-          
-         
+
+
 
             //create business units
 
@@ -183,26 +205,11 @@ namespace Migration_Tool_Performance_Manager.Controllers
 
             foreach (var item in users1)
             {
-
-                //look for supervisor using old id
-                var supervisor  = users1.FirstOrDefault(f => f.OldId == item.ManagerOldId.ToString());
-
-                //get business 
-                var business =   oldBusinessUnits.FirstOrDefault(f => f.Id == item.BusinessUnit);
-
-                //get departments 
-                var department = oldDepartments.FirstOrDefault(f => f.Id == item.DepartmentId);
+                //code yakamiriria izvozvo
 
 
-                item.EmployeeDetailEmployee = new EmployeeDetail()
-                {
-                    BusinessUnit = ,
-                    DepartmentId = ,
-                    Position = ,
-                    CompanyId = company.Id,
-                    SupervisorId = supervisor == null ? item.Id : supervisor.Id,
 
-                };
+
             }
 
             //adding scorecards
@@ -212,7 +219,7 @@ namespace Migration_Tool_Performance_Manager.Controllers
 
                 var owner = users1.FirstOrDefault(f => f.OldId == item.Owner.ToString());
 
-                if(owner is null)
+                if (owner is null)
                 {
                     continue;
                 }
@@ -226,8 +233,8 @@ namespace Migration_Tool_Performance_Manager.Controllers
                     PeriodTo = DateTime.Parse(item.ReportingPeriod),
                     CompanyId = company.Id,
                     DateReviewed = item.LastUpdate,
-                    IsLocked = item.Lock1 == "0" ? false : true,
-                    Submitted = true,
+                    IsLocked = item.Lock1 == "0" ? true : false,
+                    Submitted = false,
                     OldId = item.Id,
                     EmployeePerspectives = perspectives.Select(f => new EmployeePerspective()
                     {
@@ -242,6 +249,122 @@ namespace Migration_Tool_Performance_Manager.Controllers
 
 
             _context.AddRange(scorecards1);
+
+
+
+
+            await _context.SaveChangesAsync();
+
+
+            List<Goal> newGoals = new List<Goal>();
+
+            foreach (var item in scorecards1)
+            {
+                //create goals
+
+                var itsGoals = oldGoals.Where(f => f.ScorecardId == item.OldId.ToString()).ToList();
+
+                if (!itsGoals.Any())
+                {
+                    continue;
+                }
+
+                var goals = itsGoals.Select(f => new Goal()
+                {
+                    Name = f.Goal,
+                    ScorecardId = item.Id,
+                    CompanyId = company.Id,
+                    OldId = f.Id,
+                    Datecreated = DateOnly.FromDateTime(DateTime.Now),
+                    Approved = true,
+                    Description = f.GoalExplanation,
+                    UserId = item.OwnerId,
+                    PerspectiveId = perspectives.FirstOrDefault(d => d.OldId.ToString() == f.PerspectiveId) == null ?
+                                             null : perspectives.First(d => d.OldId.ToString() == f.PerspectiveId).Id,
+
+                }).ToList();
+
+                newGoals.AddRange(goals);
+            }
+            _context.AddRange(newGoals);
+            await _context.SaveChangesAsync();
+
+            List<Measure> newMeasures = new List<Measure>();
+            foreach (var item in newGoals)
+            {
+
+                var scorecard = scorecards1.FirstOrDefault(d => d.Id == item.ScorecardId);
+
+                var measures = oldTargets.Where(f => f.GoalId == item.OldId.ToString()).Select(f => new Measure()
+                {
+                    GoalId = item.Id,
+                    CompanyId = company.Id,
+                    OldId = f.Id,
+                    Name = f.Measure,
+                    PerspectiveId = item.PerspectiveId,
+                    ScorecardId = item.ScorecardId.Value,
+
+                    MeasureUnit = new MeasureUnit
+                    {
+                        CompanyId = company.Id,
+                        MeasureId = item.Id,
+                        AllocatedWeight =string.IsNullOrEmpty( f.AllocatedWeight) ? 0 : double.Parse(f.AllocatedWeight),
+                        Approved = true,
+                        BaseTarget =string.IsNullOrEmpty( f.BaseTarget  )? 0 : double.Parse(f.BaseTarget),
+                        StretchedTarget =string.IsNullOrEmpty( f.StretchTarget) ? 0 : double.Parse(f.StretchTarget),
+                        GoalId = item.Id,
+                        PerspectiveId = item.PerspectiveId ==null? perspectives.FirstOrDefault().Id : item.PerspectiveId.Value,
+                        RecordingFrequency = f.ReportingFrequency,
+                        ScorecardId = scorecard.Id,
+                        TargetPeriod = f.TargetPeriod,
+                        Unit = f.Unit,
+
+
+                    }
+
+                }).ToList();
+
+                newMeasures.AddRange(measures);
+            }
+
+            _context.AddRange(newMeasures);
+            await _context.SaveChangesAsync();
+
+            List<Kpiactual> newActuals = new List<Kpiactual>();
+            foreach (var measure in newMeasures)
+            {
+                var itsActuals = oldActuals.Where(f => f.TargetId == measure.OldId.ToString()).ToList();
+
+                if (!itsActuals.Any())
+                {
+                    continue;
+                }
+
+                var goal = newGoals.FirstOrDefault(f => f.Id == measure.GoalId);
+
+                var actuals = itsActuals.Select(f => new Kpiactual()
+                {
+                    Actual = string.IsNullOrEmpty(f.Amount) ? 0 : double.Parse(f.Amount),
+                    CompanyId = company.Id,
+                    DateRecorded = f.Date,
+                    MeasureUnitId = measure.Id,
+
+                    ScorecardId = measure.ScorecardId,
+                    Tp = measure.MeasureUnit.TargetPeriod,
+                    St = measure.MeasureUnit.StretchedTarget,
+                    Bt = measure.MeasureUnit.BaseTarget,
+                    Aw = measure.MeasureUnit.AllocatedWeight,
+                    Frequency = measure.MeasureUnit.RecordingFrequency,
+                    EmployeeId = goal.UserId,
+                    DateUpdated = DateTime.Now,
+                    Evidence = "",
+                    Score = string.IsNullOrEmpty(f.Score) ? 0 : double.Parse(f.Score),
+                }).ToList();
+
+                newActuals.AddRange(actuals);
+            }
+
+            _context.AddRange(newActuals);
             await _context.SaveChangesAsync();
 
             return Ok(scorecards1.Count());

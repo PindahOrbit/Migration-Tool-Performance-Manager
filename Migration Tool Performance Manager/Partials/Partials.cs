@@ -24,4 +24,19 @@ namespace Migration_Tool_Performance_Manager.Models2
         [NotMapped]
         public int OldId { get; set; }
     }
+    public partial class Goal
+    {
+        [NotMapped]
+        public int OldId { get; set; }
+    }
+    public partial class Measure
+    {
+        [NotMapped]
+        public int OldId { get; set; }
+    }
+    public partial class Perspective
+    {
+        [NotMapped]
+        public int OldId { get; set; }
+    }
 }
